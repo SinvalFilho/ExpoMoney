@@ -11,12 +11,10 @@ import {
 } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import { useNavigation } from '@react-navigation/native';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { StackNavigationProp } from '@react-navigation/stack';
-import axios from 'axios';
 import TransactionForm from '../components/TransactionForm';
+import { AuthService, TransactionService, UserService } from '../services/api';
 
-const screenWidth = Dimensions.get('window').width;
 
 type RootStackParamList = {
   Login: undefined;
@@ -65,11 +63,8 @@ export default function Dashboard({ onLogout }: DashboardProps) {
 
   const fetchUser = async () => {
     try {
-      const token = await AsyncStorage.getItem('@access_token');
-      const response = await axios.get('http://192.168.18.149:8000/api/users/me/', {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      setUsername(response.data.username);
+      const userData = await UserService.getProfile();
+      setUsername(userData.username);
     } catch (error) {
       console.error('Erro ao buscar usuário:', error);
     }
@@ -78,18 +73,13 @@ export default function Dashboard({ onLogout }: DashboardProps) {
   const loadData = async () => {
     setRefreshing(true);
     try {
-      const token = await AsyncStorage.getItem('@access_token');
-      const [transactionsRes, summaryRes] = await Promise.all([
-        axios.get('http://192.168.18.149:8000/api/transactions/', {
-          headers: { Authorization: `Bearer ${token}` },
-        }),
-        axios.get('http://192.168.18.149:8000/api/transactions/summary/', {
-          headers: { Authorization: `Bearer ${token}` },
-        }),
+      const [transactionsData, summaryData] = await Promise.all([
+        TransactionService.getTransactions(),
+        TransactionService.getSummary(),
       ]);
 
-      setTransactions(transactionsRes.data);
-      setSummary(summaryRes.data);
+      setTransactions(transactionsData);
+      setSummary(summaryData);
     } catch (error) {
       console.error('Erro ao carregar dados:', error);
     } finally {
@@ -99,12 +89,8 @@ export default function Dashboard({ onLogout }: DashboardProps) {
 
   const handleLogout = async () => {
     try {
-      await AsyncStorage.removeItem('@access_token');
+      await AuthService.logout();
       onLogout();
-      navigation.reset({
-        index: 0,
-        routes: [{ name: 'Login' }], 
-      });
     } catch (error) {
       console.error('Erro ao fazer logout:', error);
     }
@@ -136,14 +122,14 @@ export default function Dashboard({ onLogout }: DashboardProps) {
         </View>
 
         <View style={styles.row}>
-          <View style={[styles.card, styles.smallCard, { backgroundColor: colors.income }]}>
+          <View style={[styles.card, { backgroundColor: colors.income }]}>
             <Text style={styles.cardTitle}>Receitas</Text>
             <Text style={styles.cardAmount}>
               R$ {parseFloat(summary.total_income.toString()).toFixed(2)}
             </Text>
           </View>
 
-          <View style={[styles.card, styles.smallCard, { backgroundColor: colors.expense }]}>
+          <View style={[styles.card,{ backgroundColor: colors.expense }]}>
             <Text style={styles.cardTitle}>Despesas</Text>
             <Text style={styles.cardAmount}>
               R$ {parseFloat(summary.total_expenses.toString()).toFixed(2)}
@@ -266,9 +252,7 @@ const styles = StyleSheet.create({
     shadowRadius: 6,
     elevation: 6,
   },
-  smallCard: {
-    width: (screenWidth - 40) / 2.1,
-  },
+
   row: {
     flexDirection: 'row',
     justifyContent: 'space-between',

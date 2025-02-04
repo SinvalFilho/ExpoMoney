@@ -1,9 +1,8 @@
 import React, { useState } from 'react';
 import { View, TextInput, Text, StyleSheet, TouchableOpacity, ActivityIndicator } from 'react-native';
-import { Picker } from '@react-native-picker/picker';
+import ModalSelector from 'react-native-modal-selector';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import { register } from '../services/api';
-
 
 const colors = {
   background: '#121212',
@@ -28,6 +27,11 @@ export default function Register({ navigation }: any) {
   });
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+
+  const userTypeOptions = [
+    { key: 'PF', label: 'Pessoa Física' },
+    { key: 'PJ', label: 'Pessoa Jurídica' },
+  ];
 
   const handleRegister = async () => {
     setLoading(true);
@@ -95,16 +99,23 @@ export default function Register({ navigation }: any) {
           />
         </View>
 
-        <View style={styles.pickerContainer}>
-          <Picker
-            selectedValue={form.user_type}
-            onValueChange={(v) => setForm({ ...form, user_type: v })}
-            style={styles.picker}
-            dropdownIconColor={colors.textSecondary}
+        <View style={styles.modalSelectorContainer}>
+          <ModalSelector
+            data={userTypeOptions}
+            initValue="Selecione o tipo de usuário"
+            supportedOrientations={['portrait']}
+            accessible={true}
+            scrollViewAccessibilityLabel={'Scrollable options'}
+            cancelButtonAccessibilityLabel={'Cancelar'}
+            onChange={(option) => setForm({ ...form, user_type: option.key as 'PF' | 'PJ' })}
           >
-            <Picker.Item label="Pessoa Física" value="PF" color={colors.text} />
-            <Picker.Item label="Pessoa Jurídica" value="PJ" color={colors.text} />
-          </Picker>
+            <View style={styles.modalSelectorInput}>
+              <Text style={styles.modalSelectorText}>
+                {form.user_type === 'PF' ? 'Pessoa Física' : 'Pessoa Jurídica'}
+              </Text>
+              <Icon name="arrow-drop-down" size={24} color={colors.textSecondary} />
+            </View>
+          </ModalSelector>
         </View>
 
         <TouchableOpacity
@@ -168,17 +179,23 @@ const styles = StyleSheet.create({
     height: 50,
     color: colors.text,
   },
-  pickerContainer: {
+  modalSelectorContainer: {
     borderWidth: 1,
     borderColor: colors.divider,
     borderRadius: 8,
     marginBottom: 20,
     overflow: 'hidden',
   },
-  picker: {
+  modalSelectorInput: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 10,
     height: 50,
+  },
+  modalSelectorText: {
     color: colors.text,
-    backgroundColor: colors.surface,
+    fontSize: 16,
   },
   button: {
     backgroundColor: colors.primary,

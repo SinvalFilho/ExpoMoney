@@ -3,12 +3,44 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const API_URL = 'http://192.168.18.149:8000/api';
 
+export interface Category {
+  id: number;
+  name: string;
+  user: number;
+}
+
+ export interface Transaction {
+  id: number;
+  amount: string;
+  description: string;
+  category_name: string;
+  category_id: number;
+  date: string;
+  type: 'IN' | 'OUT';
+  payment_method: string;
+}
+
+interface Summary {
+  balance: number;
+  total_income: number;
+  total_expenses: number;
+}
+
 const api = axios.create({
   baseURL: API_URL,
   headers: {
     'Content-Type': 'application/json',
   },
 });
+
+const refreshAuthToken = async () => {
+  const refreshToken = await AsyncStorage.getItem('@refresh_token');
+  if (!refreshToken) throw new Error('No refresh token available');
+
+  const response = await api.post('auth/refresh/', { refresh: refreshToken });
+  await AsyncStorage.setItem('@access_token', response.data.access);
+  return response.data.access;
+};
 
 api.interceptors.request.use(async (config) => {
   const token = await AsyncStorage.getItem('@access_token');
@@ -46,17 +78,6 @@ export const login = async (username: string, password: string) => {
   return response.data;
 };
 
-export const AuthService = {
-  async getUser() {
-    return api.get('/users/me/');
-  },
-  async logout() {
-    await AsyncStorage.removeItem('@access_token');
-  },
-};
-
-
-
 export const register = async (data: {
   username: string;
   email: string;
@@ -67,71 +88,75 @@ export const register = async (data: {
   return response.data;
 };
 
-export const getUser = async () => {
-  const response = await api.get('users/me/');
-  return response.data;
+export const AuthService = {
+  async getUser() {
+    const response = await api.get('/users/me/');
+    return response.data;
+  },
+  async logout() {
+    await AsyncStorage.removeItem('@access_token');
+  },
 };
 
 export const TransactionService = {
-  async getTransactions() {
-    return api.get('/transactions/');
+  async getTransactions(): Promise<Transaction[]> {
+    const response = await api.get('/transactions/');
+    return response.data;
   },
-  async getSummary() {
-    return api.get('/transactions/summary/');
+
+  async getSummary(): Promise<Summary> {
+    const response = await api.get('/transactions/summary/');
+    return response.data;
+  },
+
+  async createTransaction(data: {
+    amount: number;
+    description: string;
+    category: number;
+    type: 'IN' | 'OUT';
+    payment_method: string;
+    date: string;
+  }): Promise<Transaction> {
+    const response = await api.post('transactions/', data);
+    return response.data;
+  },
+
+  async updateTransaction(id: number, data: Partial<Transaction>): Promise<Transaction> {
+    const response = await api.put(`/transactions/${id}/`, data);
+    return response.data;
+  },
+
+  async deleteTransaction(id: number): Promise<void> {
+    await api.delete(`/transactions/${id}/`);
   },
 };
 
-export const createTransaction = async (data: {
-  amount: number;
-  description: string;
-  category: number;
-  type: 'IN' | 'OUT';
-  payment_method: string;
-}) => {
-  const response = await api.post('transactions/', data);
-  return response.data;
+export const CategoryService = {
+  async getCategories(): Promise<Category[]> {
+    const response = await api.get('/categories/');
+    return response.data;
+  },
+
+  async createCategory(name: string): Promise<Category> {
+    const response = await api.post('categories/', { name });
+    return response.data;
+  },
+
+  async updateCategory(id: number, name: string): Promise<Category> {
+    const response = await api.put(`categories/${id}/`, { name });
+    return response.data;
+  },
+
+  async deleteCategory(id: number): Promise<void> {
+    await api.delete(`categories/${id}/`);
+  },
 };
 
-export const getSummary = async () => {
-  const response = await api.get('transactions/summary/');
-  return response.data;
+export const UserService = {
+  async getProfile() {
+    const response = await api.get('/users/me/');
+    return response.data;
+  },
 };
-
-export const getCategories = async (): Promise<Category[]> => {
-  const token = await AsyncStorage.getItem('@access_token');
-  const response = await axios.get('http://192.168.18.149:8000/api/categories/', {
-    headers: { Authorization: `Bearer ${token}` }
-  });
-  return response.data;
-};
-
-export const createCategory = async (name: string) => {
-  const response = await api.post<Category>('categories/', { name });
-  return response.data;
-};
-
-export const updateCategory = async (id: number, name: string) => {
-  const response = await api.put<Category>(`categories/${id}/`, { name });
-  return response.data;
-};
-
-export const deleteCategory = async (id: number) => {
-  await api.delete(`categories/${id}/`);
-};
-
-const refreshAuthToken = async () => {
-  const refreshToken = await AsyncStorage.getItem('@refresh_token');
-  if (!refreshToken) throw new Error('No refresh token available');
-
-  const response = await api.post('auth/refresh/', { refresh: refreshToken });
-  await AsyncStorage.setItem('@access_token', response.data.access);
-  return response.data.access;
-};
-
-export interface Category {
-  id: number;
-  name: string;
-}
 
 export default api;
-

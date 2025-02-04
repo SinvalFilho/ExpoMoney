@@ -26,7 +26,6 @@ export default function Login({ navigation, onLogin }: any) {
       const data = await login(username, password);
       await AsyncStorage.setItem('@access_token', data.access);
       onLogin();
-      navigation.replace('Main');
     } catch (err) {
       setError('Credenciais inválidas');
     }

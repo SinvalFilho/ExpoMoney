@@ -1,16 +1,19 @@
-import React, { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, ActivityIndicator, Dimensions, TouchableOpacity } from 'react-native';
+import React, { useEffect, useState, useCallback } from 'react';
+import { 
+  View, 
+  Text, 
+  StyleSheet, 
+  ActivityIndicator, 
+  Dimensions, 
+  RefreshControl, 
+  TouchableOpacity,
+  ScrollView 
+} from 'react-native';
 import { PieChart } from 'react-native-chart-kit';
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import axios from 'axios';
 import { LinearGradient } from 'expo-linear-gradient';
+import DateTimePicker from '@react-native-community/datetimepicker';
 
-interface Transaction {
-  id: number;
-  amount: number;
-  category_name: string;
-  type: 'IN' | 'OUT';
-}
+import { TransactionService, Transaction } from '../services/api';
 
 const chartColors = ['#7F5A83', '#0D324D', '#BFCDE0', '#F7EF81', '#D55672', '#5DD9C1'];
 
@@ -22,124 +25,180 @@ const colors = {
   error: '#D55672',
   text: '#FFFFFF',
   textSecondary: '#888888',
-  income: '#5DD9C1',
-  expense: '#D55672',
-  divider: '#2A2A2A',
 };
 
 export default function Charts() {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
+  const [startDate, setStartDate] = useState<Date>(new Date());
+  const [endDate, setEndDate] = useState<Date>(new Date());
+  const [showDatePicker, setShowDatePicker] = useState<'start' | 'end' | null>(null);
+  const [containerWidth, setContainerWidth] = useState(Dimensions.get('window').width);
 
-  useEffect(() => {
-    let isMounted = true;
-    const loadData = async () => {
-      try {
-        const token = await AsyncStorage.getItem('@access_token');
-        if (!token) throw new Error('Token não encontrado');
+  const handleContainerLayout = (event: any) => {
+    const { width } = event.nativeEvent.layout;
+    setContainerWidth(width);
+  };
 
-        const response = await axios.get('http://192.168.18.149:8000/api/transactions/', {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-
-        if (isMounted) {
-          if (Array.isArray(response.data)) {
-            setTransactions(response.data);
-          } else {
-            throw new Error('Formato de resposta inválido');
-          }
-        }
-      } catch (error) {
-        console.error('Erro ao carregar transações:', error);
-        if (isMounted) setError('Erro ao carregar dados');
-      } finally {
-        if (isMounted) setLoading(false);
-      }
-    };
-
-    loadData();
-    return () => {
-      isMounted = false;
-    };
+  const loadData = useCallback(async () => {
+    try {
+      setError(null);
+      setLoading(true);
+      const transactions = await TransactionService.getTransactions();
+      setTransactions(transactions);
+    } catch (error) {
+      setError('Erro ao carregar dados. Puxe para atualizar.');
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
   }, []);
 
+  useEffect(() => {
+    loadData();
+  }, [loadData]);
+
+  const onRefresh = useCallback(() => {
+    setRefreshing(true);
+    loadData();
+  }, [loadData]);
+
   const processChartData = () => {
-    const categoryTotals: { [key: string]: number } = {};
+    const filtered = transactions.filter(t => 
+      t.type === 'OUT' && 
+      new Date(t.date) >= startDate && 
+      new Date(t.date) <= endDate
+    );
 
-    transactions.forEach(({ amount, category_name, type }) => {
-      const key = `${category_name} (${type === 'IN' ? 'Entrada' : 'Saída'})`;
+    const categories: { [key: string]: number } = {};
+    let total = 0;
 
-      if (type === 'IN') {
-        categoryTotals[key] = (categoryTotals[key] || 0) + parseFloat(amount.toString());
-      } else {
-        categoryTotals[key] = (categoryTotals[key] || 0) - parseFloat(amount.toString());
-      }
+    filtered.forEach(t => {
+      const amount = parseFloat(t.amount);
+      categories[t.category_name] = (categories[t.category_name] || 0) + amount;
+      total += amount;
     });
 
-    const data = Object.keys(categoryTotals).map((key, index) => ({
-      name: key,
-      amount: Math.abs(categoryTotals[key]),
+    const data = Object.entries(categories).map(([name, amount], index) => ({
+      name: `${name}\nR$ ${amount.toFixed(2)} (${((amount/total)*100).toFixed(1)}%)`,
+      amount,
       color: chartColors[index % chartColors.length],
       legendFontColor: colors.text,
-      legendFontSize: 14,
+      legendFontSize: 12,
     }));
 
-    return data.length > 0 ? data : [{ name: 'Sem Dados', amount: 1, color: '#ccc', legendFontColor: colors.textSecondary, legendFontSize: 14 }];
+    return {
+      data: data.length > 0 ? data : [{ name: 'Sem gastos no período', amount: 1, color: '#ccc' }],
+      total
+    };
+  };
+
+  const { data, total } = processChartData();
+
+  const handleDateChange = (event: any, selectedDate?: Date) => {
+    setShowDatePicker(null);
+    if (selectedDate) {
+      if (showDatePicker === 'start') {
+        setStartDate(selectedDate);
+      } else {
+        setEndDate(selectedDate);
+      }
+    }
   };
 
   return (
-    <LinearGradient
-      colors={['#0A0A0A', '#1A1A1A']}
-      style={styles.container}
-    >
-      <View style={styles.header}>
-        <Text style={styles.title}>Análise por Categoria</Text>
-        <View style={styles.separator} />
-      </View>
-
-      {loading ? (
-        <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color={colors.primary} />
-          <Text style={styles.loadingText}>Carregando insights...</Text>
-        </View>
-      ) : error ? (
-        <View style={styles.messageContainer}>
-          <Text style={styles.errorText}>🚨 {error}</Text>
-        </View>
-      ) : transactions.length === 0 ? (
-        <View style={styles.messageContainer}>
-          <Text style={styles.emptyText}>📊 Nenhum dado para exibir</Text>
-        </View>
-      ) : (
-        <View style={styles.chartCard}>
-          <PieChart
-            data={processChartData()}
-            width={Dimensions.get('window').width - 48}
-            height={260}
-            chartConfig={{
-              backgroundGradientFrom: colors.surface,
-              backgroundGradientTo: colors.surface,
-              color: (opacity = 1) => `rgba(255, 255, 255, ${opacity})`,
-              decimalPlaces: 2,
-            }}
-            accessor="amount"
-            backgroundColor="transparent"
-            paddingLeft="18"
-            absolute
-            style={styles.chart}
-            hasLegend={false}
+    <LinearGradient colors={['#0A0A0A', '#1A1A1A']} style={styles.container}>
+      <ScrollView
+        contentContainerStyle={styles.scrollContainer}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            tintColor={colors.primary}
           />
-          <View style={styles.legendContainer}>
-            {processChartData().map((item, index) => (
-              <View key={index} style={styles.legendItem}>
-                <View style={[styles.legendColor, { backgroundColor: item.color }]} />
-                <Text style={styles.legendText}>{item.name}</Text>
-              </View>
-            ))}
-          </View>
+        }
+      >
+        <View style={styles.header}>
+          <Text style={styles.title}>Análise Financeira</Text>
+          <View style={styles.separator} />
         </View>
-      )}
+
+        <View style={styles.dateContainer}>
+          <TouchableOpacity 
+            style={styles.dateInput} 
+            onPress={() => setShowDatePicker('start')}
+          >
+            <Text style={styles.dateText}>
+              Data Inicial: {startDate.toLocaleDateString('pt-BR')}
+            </Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity 
+            style={styles.dateInput} 
+            onPress={() => setShowDatePicker('end')}
+          >
+            <Text style={styles.dateText}>
+              Data Final: {endDate.toLocaleDateString('pt-BR')}
+            </Text>
+          </TouchableOpacity>
+
+          {showDatePicker && (
+            <DateTimePicker
+              value={showDatePicker === 'start' ? startDate : endDate}
+              mode="date"
+              display="spinner"
+              onChange={handleDateChange}
+              style={styles.datePicker}
+            />
+          )}
+        </View>
+
+        {loading ? (
+          <View style={styles.loadingContainer}>
+            <ActivityIndicator size="large" color={colors.primary} />
+            <Text style={styles.loadingText}>Carregando dados...</Text>
+          </View>
+        ) : error ? (
+          <View style={styles.messageContainer}>
+            <Text style={styles.errorText}>🚨 {error}</Text>
+          </View>
+        ) : (
+          <View style={styles.chartContainer} onLayout={handleContainerLayout}>
+            <PieChart
+              data={data}
+              width={containerWidth}
+              height={300}
+              chartConfig={{
+                backgroundGradientFrom: colors.surface,
+                backgroundGradientTo: colors.surface,
+                color: () => colors.text,
+                decimalPlaces: 2,
+              }}
+              accessor="amount"
+              backgroundColor="transparent"
+              paddingLeft="90"
+              absolute
+              hasLegend={false}
+              style={styles.chart}
+            />
+
+            <Text style={styles.totalText}>
+              Total Gasto: R$ {total.toFixed(2)}
+            </Text>
+
+            <View style={styles.legendContainer}>
+              {data.map((item, index) => (
+                <View key={index} style={styles.legendItem}>
+                  <View style={[styles.colorDot, { backgroundColor: item.color }]} />
+                  <Text style={styles.legendText}>{item.name}</Text>
+                </View>
+              ))}
+            </View>
+          </View>
+        )}
+      </ScrollView>
     </LinearGradient>
   );
 }
@@ -147,93 +206,117 @@ export default function Charts() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    paddingHorizontal: 24,
-    paddingTop: 48,
+    padding: 20,
+  },
+  scrollContainer: {
+    flexGrow: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   header: {
-    marginBottom: 32,
+    marginBottom: 20,
+    alignItems: 'center',
+    width: '100%',
   },
   title: {
-    fontSize: 28,
-    fontWeight: '800',
-    color: colors.text,
-    textAlign: 'left',
-    fontFamily: 'Inter_900Black',
-    letterSpacing: -0.5,
+    fontSize: 26,
+    color: '#FFFFFF',
+    fontWeight: '700',
+    marginTop: 20,
+    marginBottom: 20,
   },
   separator: {
-    height: 3,
-    width: 48,
-    backgroundColor: colors.primary,
-    marginTop: 16,
-    borderRadius: 2,
+    height: 2,
+    width: '30%',
+    backgroundColor: '#7F5A83',
   },
-  chartCard: {
-    backgroundColor: colors.surface,
-    borderRadius: 24,
-    padding: 24,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.2,
-    shadowRadius: 16,
-    elevation: 12,
+  dateContainer: {
+    marginVertical: 15,
+    gap: 10,
+    width: '100%',
+    alignItems: 'center',
+  },
+  dateInput: {
+    backgroundColor: '#FFFFFF10',
+    padding: 15,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#7F5A83',
+    width: '80%',
+  },
+  dateText: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    textAlign: 'center',
+  },
+  datePicker: {
+    backgroundColor: '#1A1A1A',
+  },
+  chartContainer: {
+    width: '100%',
+    alignItems: 'center',
+    marginTop: 20,
+  },
+  chart: {
+    marginVertical: 20,
+  },
+  totalText: {
+    color: '#FFFFFF',
+    fontSize: 18,
+    fontWeight: '600',
+    textAlign: 'center',
+    marginVertical: 15,
+    backgroundColor: '#7F5A8320',
+    padding: 12,
+    borderRadius: 8,
+  },
+  legendContainer: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'center',
+    gap: 10,
+    marginTop: 20,
+    paddingHorizontal: 10,
+    width: '100%',
+  },
+  legendItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FFFFFF10',
+    padding: 10,
+    borderRadius: 8,
+    minWidth: '45%',
+    margin: 5,
+  },
+  colorDot: {
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+    marginRight: 8,
+  },
+  legendText: {
+    color: '#FFFFFF',
+    fontSize: 12,
+    flexShrink: 1,
   },
   loadingContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    gap: 16,
+    marginTop: 100,
   },
   loadingText: {
-    fontSize: 16,
-    color: colors.textSecondary,
-    fontFamily: 'Inter_400Regular',
-    letterSpacing: 0.5,
+    color: '#888888',
+    marginTop: 12,
   },
   messageContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    padding: 24,
+    marginTop: 100,
   },
   errorText: {
-    color: colors.error,
-    fontSize: 18,
-    fontFamily: 'Inter_600SemiBold',
-    textAlign: 'center',
-  },
-  emptyText: {
-    color: colors.textSecondary,
-    fontSize: 18,
-    fontFamily: 'Inter_500Medium',
-    textAlign: 'center',
-  },
-  chart: {
-    borderRadius: 16,
-  },
-  legendContainer: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 12,
-    marginTop: 24,
-  },
-  legendItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    padding: 8,
-    borderRadius: 8,
-    backgroundColor: '#ffffff08',
-  },
-  legendColor: {
-    width: 14,
-    height: 14,
-    borderRadius: 4,
-    marginRight: 8,
-  },
-  legendText: {
-    color: colors.text,
-    fontSize: 12,
-    fontFamily: 'Inter_500Medium',
-    maxWidth: 100,
+    color: '#D55672',
+    fontSize: 16,
   },
 });

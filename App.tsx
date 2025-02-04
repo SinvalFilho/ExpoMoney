@@ -35,7 +35,7 @@ function MainTabs({ navigation, onLogout }: { navigation: any; onLogout: () => v
     >
       <Tab.Screen
         name="Dashboard"
-        children={(props) => <Dashboard {...props} onLogout={onLogout} />} // Passando onLogout aqui
+        children={(props) => <Dashboard {...props} onLogout={onLogout} />} 
       />
       <Tab.Screen name="Charts" component={Charts} />
       <Tab.Screen name="History" component={History} />
@@ -91,7 +91,6 @@ export default function App() {
           <Stack.Screen
             name="Main"
             options={{ headerShown: false }}
-            // Usando uma função para renderizar MainTabs
             children={(props) => <MainTabs {...props} onLogout={handleLogout} />}
           />
         ) : (
@@ -105,7 +104,7 @@ export default function App() {
             <Stack.Screen
               name="Register"
               component={Register}
-              options={{ title: 'Criar Conta' }}
+              options={{ headerShown: false}}
             />
           </>
         )}

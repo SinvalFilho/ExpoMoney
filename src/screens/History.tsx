@@ -12,26 +12,11 @@ import {
 } from 'react-native';
 import { Picker } from '@react-native-picker/picker';
 import Icon from 'react-native-vector-icons/MaterialIcons';
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import axios from 'axios';
 import { LinearGradient } from 'expo-linear-gradient';
 import DateTimePicker from '@react-native-community/datetimepicker';
+import { TransactionService, CategoryService, Transaction, Category } from '../services/api';
 
-interface Transaction {
-  id: number;
-  amount: string;
-  description: string;
-  category_name: string;
-  category_id: number;
-  date: string;
-  type: 'IN' | 'OUT';
-  payment_method: string;
-}
 
-interface Category {
-  id: number;
-  name: string;
-}
 
 export default function History() {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
@@ -58,39 +43,29 @@ export default function History() {
 
   const fetchCategories = async () => {
     try {
-      const token = await AsyncStorage.getItem('@access_token');
-      const response = await axios.get('http://192.168.18.149:8000/api/categories/', {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      return response.data;
+      const categoriesData = await CategoryService.getCategories();
+      setCategories([{
+        id: 0, name: 'Todas',
+        user: 0
+      }, ...categoriesData]);
     } catch (error) {
       setError('Erro ao carregar categorias');
-      return [];
     }
   };
 
   const fetchTransactions = async () => {
     try {
-      const token = await AsyncStorage.getItem('@access_token');
-      const response = await axios.get('http://192.168.18.149:8000/api/transactions/', {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      return response.data;
+      const transactionsData = await TransactionService.getTransactions();
+      setTransactions(transactionsData);
     } catch (error) {
       setError('Erro ao carregar transações');
-      return [];
     }
   };
 
   const loadData = async () => {
     setRefreshing(true);
     try {
-      const [categoriesData, transactionsData] = await Promise.all([
-        fetchCategories(),
-        fetchTransactions(),
-      ]);
-      setCategories([{ id: 0, name: 'Todas' }, ...categoriesData]);
-      setTransactions(transactionsData);
+      await Promise.all([fetchCategories(), fetchTransactions()]);
       setError(null);
     } catch (err: any) {
       setError(err.message || 'Erro ao carregar dados');
@@ -98,14 +73,6 @@ export default function History() {
       setRefreshing(false);
     }
   };
-
-  useEffect(() => {
-    loadData();
-  }, []);
-
-  useEffect(() => {
-    filterTransactions();
-  }, [selectedCategory, transactions]);
 
   const filterTransactions = () => {
     if (selectedCategory === 'Todas') {
@@ -121,20 +88,13 @@ export default function History() {
     if (!editingTransaction) return;
 
     try {
-      const token = await AsyncStorage.getItem('@access_token');
-
       const updatedTransaction = {
         ...editingTransaction,
         category: editingTransaction.category_id,
         date: date.toISOString().split('T')[0],
       };
 
-      await axios.put(
-        `http://192.168.18.149:8000/api/transactions/${editingTransaction.id}/`,
-        updatedTransaction,
-        { headers: { Authorization: `Bearer ${token}` } }
-      );
-
+      await TransactionService.updateTransaction(editingTransaction.id, updatedTransaction);
       loadData();
       setIsModalVisible(false);
       Alert.alert('Sucesso', 'Transação atualizada com sucesso!');
@@ -145,10 +105,7 @@ export default function History() {
 
   const handleDelete = async (id: number) => {
     try {
-      const token = await AsyncStorage.getItem('@access_token');
-      await axios.delete(`http://192.168.18.149:8000/api/transactions/${id}/`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
+      await TransactionService.deleteTransaction(id);
       loadData();
       Alert.alert('Sucesso', 'Transação excluída com sucesso!');
     } catch (error) {
@@ -179,10 +136,7 @@ export default function History() {
               color={isIncome ? '#2ecc71' : '#e74c3c'}
             />
             <View style={styles.transactionDetails}>
-              <View style={styles.transactionHeader}>
-                <Text style={styles.transactionDescription}>{item.description}</Text>
-                <Text style={styles.transactionDate}>{formatDate(item.date)}</Text>
-              </View>
+              <Text style={styles.transactionDescription}>{item.description}</Text>
               <View style={styles.transactionFooter}>
                 <Text style={styles.transactionCategory}>{item.category_name}</Text>
                 <Text style={styles.transactionPayment}>
@@ -191,13 +145,24 @@ export default function History() {
               </View>
             </View>
           </View>
-          <Text style={[styles.transactionAmount, isIncome ? styles.incomeText : styles.expenseText]}>
-            {isIncome ? '+ ' : '- '}{amount}
-          </Text>
+          <View style={styles.dateAmountContainer}>
+            <Text style={styles.transactionDateRight}>{formatDate(item.date)}</Text>
+            <Text style={[styles.transactionAmount, isIncome ? styles.incomeText : styles.expenseText]}>
+              {isIncome ? '+ ' : '- '}{amount}
+            </Text>
+          </View>
         </View>
       </TouchableOpacity>
     );
   };
+
+  useEffect(() => {
+    loadData();
+  }, []);
+
+  useEffect(() => {
+    filterTransactions();
+  }, [selectedCategory, transactions]);
 
   return (
     <LinearGradient colors={['#f9f9f9', '#eaeaea']} style={styles.container}>
@@ -308,7 +273,7 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: '#333',
     marginBottom: 20,
-    fontFamily: 'Inter_600SemiBold',
+    marginTop: 20,
   },
   pickerContainer: {
     backgroundColor: '#fff',
@@ -336,31 +301,21 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 15,
+    flex: 1,
   },
   transactionDetails: {
     flex: 1,
-    marginLeft: 10,
-  },
-  transactionHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 4,
-  },
-  transactionFooter: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
   },
   transactionDescription: {
     fontSize: 14,
     fontWeight: '500',
     color: '#333',
-    flex: 1,
   },
-  transactionDate: {
-    fontSize: 12,
-    color: '#666',
+  transactionFooter: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginTop: 4,
   },
   transactionCategory: {
     fontSize: 12,
@@ -370,10 +325,17 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: '#666',
   },
+  dateAmountContainer: {
+    alignItems: 'flex-end',
+  },
+  transactionDateRight: {
+    fontSize: 12,
+    color: '#666',
+    marginBottom: 4,
+  },
   transactionAmount: {
     fontSize: 16,
     fontWeight: '600',
-    textAlign: 'right',
   },
   incomeCard: {
     borderLeftWidth: 4,
@@ -452,7 +414,7 @@ const styles = StyleSheet.create({
   },
   cancelButton: {
     flex: 1,
-    backgroundColor: '#e74c3c',
+    backgroundColor: '#ccc',
     borderRadius: 5,
     padding: 10,
     alignItems: 'center',
