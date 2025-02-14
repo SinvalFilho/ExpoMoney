@@ -7,13 +7,12 @@ import {
   TouchableOpacity,
   Modal,
   RefreshControl,
-  Dimensions,
 } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import { useNavigation } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
 import TransactionForm from '../components/TransactionForm';
-import { AuthService, TransactionService, UserService } from '../services/api';
+import { AuthService, TransactionService, UserService, Transaction, Summary } from '../services/api';
 
 
 type RootStackParamList = {
@@ -24,24 +23,8 @@ type RootStackParamList = {
 
 type DashboardScreenNavigationProp = StackNavigationProp<RootStackParamList, 'Dashboard'>;
 
-interface Transaction {
-  id: number;
-  amount: string;
-  description: string;
-  category_name: string; 
-  date: string;
-  type: 'IN' | 'OUT';
-  payment_method: string;
-}
-
-interface DashboardProps {
+type DashboardProps = {
   onLogout: () => void;
-}
-
-interface Summary {
-  balance: number;
-  total_income: number;
-  total_expenses: number;
 }
 
 export default function Dashboard({ onLogout }: DashboardProps) {

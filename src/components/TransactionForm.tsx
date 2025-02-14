@@ -9,14 +9,9 @@ import {
 } from 'react-native';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import ModalSelector from 'react-native-modal-selector';
-import { CategoryService, TransactionService } from '../services/api';
+import { CategoryService, TransactionService, Category } from '../services/api';
 
-interface Category {
-  id: number;
-  name: string;
-}
-
-interface TransactionFormProps {
+type TransactionFormProps = {
   visible: boolean;
   onClose: () => void;
   onSuccess: () => void;

@@ -1,15 +1,15 @@
 import axios from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-const API_URL = 'http://192.168.18.149:8000/api';
+const API_URL = 'http://10.24.8.225:8000/api';
 
-export interface Category {
+export type Category = {
   id: number;
   name: string;
   user: number;
 }
 
- export interface Transaction {
+ export type Transaction = {
   id: number;
   amount: string;
   description: string;
@@ -20,7 +20,7 @@ export interface Category {
   payment_method: string;
 }
 
-interface Summary {
+export type Summary = {
   balance: number;
   total_income: number;
   total_expenses: number;
